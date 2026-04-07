@@ -1,0 +1,41 @@
+{
+  "name": "jira-mcp-server",
+  "version": "0.1.0",
+  "description": "A production-ready MCP server for Jira integration with dual transport support",
+  "private": false,
+  "type": "module",
+  "bin": {
+    "jira-mcp-server": "./build/index.js"
+  },
+  "files": [
+    "build"
+  ],
+  "scripts": {
+    "build": "tsc && node -e \"require('fs').chmodSync('build/index.js', '755')\"",
+    "prepare": "npm run build",
+    "watch": "tsc --watch",
+    "inspector": "npx @modelcontextprotocol/inspector build/index.js",
+    "start": "node build/index.js"
+  },
+  "dependencies": {
+    "@modelcontextprotocol/sdk": "^1.26.0",
+    "dotenv": "^17.2.1",
+    "express": "^4.21.0",
+    "jira-client": "^8.2.2"
+  },
+  "devDependencies": {
+    "@types/express": "^4.17.21",
+    "@types/jira-client": "^7.1.9",
+    "@types/node": "^20.11.24",
+    "exceljs": "^4.4.0",
+    "typescript": "^5.3.3"
+  },
+  "keywords": [
+    "mcp",
+    "jira",
+    "model-context-protocol",
+    "ai",
+    "automation"
+  ],
+  "license": "MIT"
+}

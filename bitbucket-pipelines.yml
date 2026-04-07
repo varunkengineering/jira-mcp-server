@@ -1,0 +1,101 @@
+image: node:18-alpine
+
+pipelines:
+  branches:
+    main:
+      - step:
+          name: 🧱 Stage 1 — Build Docker Image
+          script:
+            - echo "🔨 Building Docker Image..."
+            - IMAGE="${REGISTRY_HOST}/jira-mcp-server:${BITBUCKET_COMMIT}"
+
+            - |
+              if [ -n "$DOCKER_HUB_USERNAME" ] && [ -n "$DOCKER_HUB_PASSWORD" ]; then
+                echo "$DOCKER_HUB_PASSWORD" | docker login -u "$DOCKER_HUB_USERNAME" --password-stdin
+              fi
+
+            - docker build -t "$IMAGE" .
+
+            - mkdir -p /tmp/jira-mcp-server
+            - echo "TIMESTAMP=${BITBUCKET_COMMIT}" > /tmp/jira-mcp-server/timestamp.txt
+
+            - echo "✅ Built image $IMAGE"
+
+      - step:
+          name: 🔍 Stage 2 — Security Scan with Trivy
+          script:
+            - |
+              if [ "${ENABLE_TRIVY:-0}" = "1" ]; then
+                echo "🔍 Running Trivy Security Scan..."
+                set -e
+                TIMESTAMP=$(cat /tmp/jira-mcp-server/timestamp.txt | cut -d'=' -f2)
+                echo "Retrieved TIMESTAMP: $TIMESTAMP"
+                mkdir -p /tmp/jira-mcp-server/trivy-cache
+                echo "Starting Trivy scan for image ${REGISTRY_HOST}/jira-mcp-server:$TIMESTAMP"
+                docker run --rm \
+                  -v /var/run/docker.sock:/var/run/docker.sock \
+                  -v /tmp/jira-mcp-server/trivy-cache:/root/.cache/ \
+                  aquasec/trivy:latest image \
+                  ${REGISTRY_HOST}/jira-mcp-server:$TIMESTAMP \
+                  > /tmp/jira-mcp-server/scan-report-$TIMESTAMP.txt & TRIVY_PID=$!
+                echo "Waiting for Trivy scan to complete..."
+                while ps -p $TRIVY_PID > /dev/null; do
+                  echo "Trivy is still scanning..."
+                  sleep 20
+                done
+                if [ -s /tmp/jira-mcp-server/scan-report-$TIMESTAMP.txt ]; then
+                  echo "✅ Trivy scan completed successfully."
+                  cat /tmp/jira-mcp-server/scan-report-$TIMESTAMP.txt
+                else
+                  echo "❌ Trivy scan failed or output file is empty." >&2
+                  exit 1
+                fi
+              else
+                echo "⏭️ Trivy Security Scan SKIPPED (ENABLE_TRIVY=${ENABLE_TRIVY:-0})"
+              fi
+
+      - step:
+          name: 📤 Stage 3 — Push Image to Registry
+          script:
+            - IMAGE="${REGISTRY_HOST}/jira-mcp-server:${BITBUCKET_COMMIT}"
+
+            - echo "📤 Logging into registry..."
+            - echo "$REGISTRY_PASSWORD" | docker login "$REGISTRY_HOST" -u "$REGISTRY_USER" --password-stdin
+
+            - echo "Pushing $IMAGE"
+            - docker push "$IMAGE"
+
+            - echo "✅ Pushed image $IMAGE"
+
+      - step:
+          name: 🚀 Stage 4 — Deploy to Kubernetes
+          script:
+            - echo "🚀 Deploying to Kubernetes..."
+
+            - TAG="${BITBUCKET_COMMIT}"
+
+            - helm lint deploy/
+
+            - |
+              helm upgrade --install jira-mcp-server deploy/ \
+                --namespace ${K8S_NAMESPACE:-default} \
+                --force \
+                --set image.repository="${REGISTRY_HOST}/jira-mcp-server" \
+                --set image.tag="$TAG"
+
+            - echo "✅ Deployed with tag $TAG"
+          after-script:
+            - set -e
+            - STATUS=$?
+            - PROJECT_NAME="jira-mcp-server"
+            - BRANCH_URL="https://bitbucket.org/$BITBUCKET_WORKSPACE/$BITBUCKET_REPO_SLUG/branch/$BITBUCKET_BRANCH"
+            - |
+              if [ "$STATUS" -eq 0 ]; then
+                MESSAGE="✅ $PROJECT_NAME: Deployment succeeded for branch: $BITBUCKET_BRANCH.\nBranch URL: $BRANCH_URL"
+              else
+                MESSAGE="❌ $PROJECT_NAME: Deployment failed for branch: $BITBUCKET_BRANCH.\nBranch URL: $BRANCH_URL"
+              fi
+            - |
+              if [ -n "$WEBHOOK_URL" ]; then
+                curl -X POST -H "Content-Type: application/json" -d "{\"text\": \"$MESSAGE\"}" "$WEBHOOK_URL"
+              fi
