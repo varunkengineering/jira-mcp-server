@@ -41,7 +41,7 @@
   "author": "varunkengineering",
   "repository": {
     "type": "git",
-    "url": "https://github.com/varunkengineering/mcp-projects.git"
+    "url": "https://github.com/varunkengineering/jira-mcp-server.git"
   },
-  "homepage": "https://github.com/varunkengineering/mcp-projects#readme"
+  "homepage": "https://github.com/varunkengineering/jira-mcp-server#readme"
 }

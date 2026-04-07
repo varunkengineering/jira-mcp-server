@@ -55,8 +55,8 @@ A production-ready [Model Context Protocol (MCP)](https://modelcontextprotocol.i
 ### 1. Clone and Build
 
 ```bash
-git clone https://github.com/varunkengineering/mcp-projects.git
-cd mcp-projects
+git clone https://github.com/varunkengineering/jira-mcp-server.git
+cd jira-mcp-server
 npm install
 npm run build
 ```
